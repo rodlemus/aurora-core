@@ -1,45 +1,52 @@
 package grpc
 
 import (
-	"context"
 	"log"
 	"net"
 	"os"
 
-	protostv "github.com/rodlemus/aurora-services/auth-service/protos/tokenvalidation"
 	"google.golang.org/grpc"
 )
 
 type GrpcServer struct {
-	log        *log.Logger
-	tpcServer  *grpc.Server
-	serverPort string
-	protostv.UnimplementedTokenValidationServer
+	log                *log.Logger
+	tpcServer          *grpc.Server
+	serverPort         string
+	isServerRegistered bool
 }
 
 func NewGrpcServer(l *log.Logger, t *grpc.Server, port string) *GrpcServer {
-	return &GrpcServer{log: l, tpcServer: t, serverPort: port}
+	return &GrpcServer{log: l, tpcServer: t, serverPort: port, isServerRegistered: false}
 }
 
+func (gs *GrpcServer) Run() {
 
-func (tv *GrpcServer) Run() {
-	protostv.RegisterTokenValidationServer(tv.tpcServer, tv)
-	tcpListener, err := net.Listen("tcp", tv.serverPort)
+	if !gs.isServerRegistered {
+		gs.log.Println("Before run grpc server needs to call 'RegisterGrpcServer'.")
+		os.Exit(1)
+	}
+
+	tcpListener, err := net.Listen("tcp", gs.serverPort)
 	if err != nil {
 		log.Fatal("Unable to listen tpc", err)
 	}
-	tv.log.Println("running on port " + tv.serverPort)
+	gs.log.Println("running on port " + gs.serverPort)
 
-	err = tv.tpcServer.Serve(tcpListener)
+	err = gs.tpcServer.Serve(tcpListener)
 
 	if err != nil {
-		tv.log.Printf("Server error listen: %s\n", err)
+		gs.log.Printf("Server error listen: %s\n", err)
 		os.Exit(1)
 	}
 }
 
-func (gs *GrpcServer) registerServer(serverRegister grpc.ServiceRegistrar, sd grpc.ServiceDesc, srv interface{}) {
-	serverRegister.RegisterService(sd, srv)
+// sd - service description is provided by proto file auto generated
+// srv - server is the Struct that implemt the interface generate by the proto file
+// for example AuthServer interface{} authGrpcServeImplementation struct{}
+// we need to pass de authGrpcServeImplementation reference
+func (gs *GrpcServer) RegisterGrpcServer(sd grpc.ServiceDesc, srv interface{}) {
+	gs.isServerRegistered = true
+	gs.tpcServer.RegisterService(&sd, srv)
 }
 
 func (tv *GrpcServer) Shutdown() {
